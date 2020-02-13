@@ -625,6 +625,7 @@ static int gf_probe(struct platform_device *pdev)
 	int status = -EINVAL;
 	unsigned long minor;
 	int i;
+	struct regulator *vreg;
 	printk("Macle11 gf_probe\n");
 	/* Initialize the driver data */
 	INIT_LIST_HEAD(&gf_dev->device_entry);
@@ -636,6 +637,23 @@ static int gf_probe(struct platform_device *pdev)
 	gf_dev->irq_gpio = -EINVAL;
 	gf_dev->reset_gpio = -EINVAL;
 	gf_dev->pwr_gpio = -EINVAL;
+
+	vreg = regulator_get(&gf_dev->spi->dev,"vcc_ana");
+	if (!vreg) {
+		dev_err(&gf_dev->spi->dev, "Unable to get vdd_ana\n");
+		goto error_hw;
+	}
+
+	status = regulator_enable(vreg);
+	if (status) {
+		dev_err(&gf_dev->spi->dev, "error enabling vdd_ana %d\n", status);
+		regulator_put(vreg);
+		vreg = NULL;
+		goto error_hw;
+	}
+	pr_info("Macle Set voltage on vdd_ana for goodix fingerprint");
+
+	msleep(11);
 
 	/* If we can allocate a minor number, hook up this device.
 	 * Reusing minors is fine so long as udev or mdev is working.
