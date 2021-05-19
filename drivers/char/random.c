@@ -112,6 +112,10 @@ EXPORT_SYMBOL(rng_is_initialized);
 /* Used by wait_for_random_bytes(), and considered an entropy collector, below. */
 static void try_to_generate_entropy(void);
 
+#ifdef CONFIG_SRANDOM
+#include <../drivers/char/srandom/srandom.h>
+#endif
+
 /*
  * Wait for the input pool to be seeded and thus guaranteed to supply
  * cryptographically secure random numbers. This applies to: the /dev/urandom
@@ -1238,7 +1242,9 @@ SYSCALL_DEFINE3(getrandom, char __user *, ubuf, size_t, len, unsigned int, flags
 	return get_random_bytes_user(&iter);
 }
 
-static unsigned int random_poll(struct file *file, poll_table *wait)
+#ifndef CONFIG_SRANDOM
+static ssize_t
+random_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
 {
 	poll_wait(file, &crng_init_wait, wait);
 	return crng_ready() ? POLLIN | POLLRDNORM : POLLOUT | POLLWRNORM;
@@ -1271,30 +1277,11 @@ static ssize_t write_pool_user(struct iov_iter *iter)
 	memzero_explicit(block, sizeof(block));
 	return ret ? ret : -EFAULT;
 }
+#endif
 
-static ssize_t random_write_iter(struct kiocb *kiocb, struct iov_iter *iter)
-{
-	return write_pool_user(iter);
-}
-
-static ssize_t urandom_read_iter(struct kiocb *kiocb, struct iov_iter *iter)
-{
-	static int maxwarn = 10;
-
-	if (!crng_ready()) {
-		if (!ratelimit_disable && maxwarn <= 0)
-			++urandom_warning.missed;
-		else if (ratelimit_disable || __ratelimit(&urandom_warning)) {
-			--maxwarn;
-			pr_notice("%s: uninitialized urandom read (%zu bytes read)\n",
-				  current->comm, iov_iter_count(iter));
-		}
-	}
-
-	return get_random_bytes_user(iter);
-}
-
-static ssize_t random_read_iter(struct kiocb *kiocb, struct iov_iter *iter)
+#ifndef CONFIG_SRANDOM
+static ssize_t random_write(struct file *file, const char __user *buffer,
+			    size_t count, loff_t *ppos)
 {
 	int ret;
 
@@ -1308,6 +1295,7 @@ static ssize_t random_read_iter(struct kiocb *kiocb, struct iov_iter *iter)
 		return ret;
 	return get_random_bytes_user(iter);
 }
+#endif
 
 static long random_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 {
@@ -1346,9 +1334,6 @@ static long random_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		ret = import_single_range(WRITE, p, len, &iov, &iter);
 		if (unlikely(ret))
 			return ret;
-		ret = write_pool_user(&iter);
-		if (unlikely(ret < 0))
-			return ret;
 		/* Since we're crediting, enforce that it was all written into the pool. */
 		if (unlikely(ret != len))
 			return -EFAULT;
@@ -1379,9 +1364,13 @@ static int random_fasync(int fd, struct file *filp, int on)
 }
 
 const struct file_operations random_fops = {
-	.read_iter = random_read_iter,
-	.write_iter = random_write_iter,
-	.poll = random_poll,
+	#ifdef CONFIG_SRANDOM
+	.read  = sdevice_read,
+	.write = sdevice_write,
+	#else
+	.read  = random_read,
+	.write = random_write,
+	#endif
 	.unlocked_ioctl = random_ioctl,
 	.fasync = random_fasync,
 	.llseek = noop_llseek,
@@ -1390,8 +1379,13 @@ const struct file_operations random_fops = {
 };
 
 const struct file_operations urandom_fops = {
-	.read_iter = urandom_read_iter,
-	.write_iter = random_write_iter,
+	#ifdef CONFIG_SRANDOM
+	.read  = sdevice_read,
+	.write = sdevice_write,
+	#else
+	.read  = urandom_read,
+	.write = random_write,
+	#endif
 	.unlocked_ioctl = random_ioctl,
 	.fasync = random_fasync,
 	.llseek = noop_llseek,
