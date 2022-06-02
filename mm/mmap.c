@@ -3865,11 +3865,7 @@ void __init mmap_init(void)
  */
 static int init_user_reserve(void)
 {
-	unsigned long free_kbytes;
-
-	free_kbytes = global_zone_page_state(NR_FREE_PAGES) << (PAGE_SHIFT - 10);
-
-	sysctl_user_reserve_kbytes = min(free_kbytes / 32, 1UL << 17);
+	sysctl_user_reserve_kbytes = 0;
 	return 0;
 }
 subsys_initcall(init_user_reserve);
@@ -3886,6 +3882,7 @@ subsys_initcall(init_user_reserve);
  */
 static int init_admin_reserve(void)
 {
+	sysctl_admin_reserve_kbytes = 0;
 	return 0;
 }
 subsys_initcall(init_admin_reserve);
