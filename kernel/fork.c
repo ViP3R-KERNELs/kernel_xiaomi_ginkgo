@@ -95,6 +95,8 @@
 #include <linux/cpufreq_times.h>
 #include <linux/scs.h>
 #include <linux/simple_lmk.h>
+
+#include <linux/cpu_input_boost.h>
 #include <linux/devfreq_boost.h>
 
 #include <asm/pgtable.h>
@@ -2233,6 +2235,7 @@ struct task_struct *fork_idle(int cpu)
 	return task;
 }
 
+extern int kp_active_mode(void);
 /*
  *  Ok, this is the main fork-routine.
  *
@@ -2250,9 +2253,20 @@ long _do_fork(unsigned long clone_flags,
 	int trace = 0;
 	long nr;
 
-	/* Boost DDR bus to the max for 50 ms when userspace launches an app */
-	if (task_is_zygote(current) && df_boost_within_input(1000))
-		devfreq_boost_kick_max(DEVFREQ_CPU_DDR_BW, 50);
+	/* Boost DDR bus to the max for 80 ms when userspace launches an app */
+	if (task_is_zygote(current) && df_boost_within_input(1000)) {
+    /*
+     * Dont boost CPU & DDR if battery saver profile is enabled
+     * and boost CPU & DDR for 80ms if balanced profile is enabled
+     */
+        if (kp_active_mode() == 3 || kp_active_mode() == 0) {
+			cpu_input_boost_kick_max(50);
+            devfreq_boost_kick_max(DEVFREQ_CPU_DDR_BW, 100);
+        } else if (kp_active_mode() == 2) {
+			cpu_input_boost_kick_max(25);
+            devfreq_boost_kick_max(DEVFREQ_CPU_DDR_BW, 50);
+        }
+    }
 
 	/*
 	 * Determine whether and which event to report to ptracer.  When
