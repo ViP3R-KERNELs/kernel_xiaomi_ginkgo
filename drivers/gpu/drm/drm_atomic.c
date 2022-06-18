@@ -30,6 +30,7 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_mode.h>
 #include <drm/drm_print.h>
+#include <linux/cpu_input_boost.h>
 #include <linux/devfreq_boost.h>
 #include <linux/pm_qos.h>
 #include <linux/sync_file.h>
@@ -2218,6 +2219,7 @@ static void complete_crtc_signaling(struct drm_device *dev,
 	kfree(fence_state);
 }
 
+extern int kp_active_mode(void);
 static int __drm_mode_atomic_ioctl(struct drm_device *dev, void *data,
 				   struct drm_file *file_priv)
 {
@@ -2261,9 +2263,19 @@ static int __drm_mode_atomic_ioctl(struct drm_device *dev, void *data,
 			(arg->flags & DRM_MODE_PAGE_FLIP_EVENT))
 		return -EINVAL;
 
-	if (!(arg->flags & DRM_MODE_ATOMIC_TEST_ONLY) &&
-			df_boost_within_input(3250))
-		devfreq_boost_kick(DEVFREQ_CPU_DDR_BW);
+	if (!(arg->flags & DRM_MODE_ATOMIC_TEST_ONLY) && df_boost_within_input(3250)) {
+    /*
+     * Dont boost CPU & DDR if battery saver profile is enabled
+     * and boost CPU & DDR for 80ms if balanced profile is enabled
+     */
+        if (kp_active_mode() == 3 || kp_active_mode() == 0) {
+			cpu_input_boost_kick_max(50);
+            devfreq_boost_kick_max(DEVFREQ_CPU_DDR_BW, 80);
+        } else if (kp_active_mode() == 2) {
+			cpu_input_boost_kick_max(25);
+            devfreq_boost_kick_max(DEVFREQ_CPU_DDR_BW, 40);
+        }
+    }
 
 	drm_modeset_acquire_init(&ctx, 0);
 
