@@ -321,13 +321,11 @@ static int set_events(struct cpu_grp_info *cpu_grp, int cpu)
 			continue;
 
 		attr->config = event_id;
-		pevent = perf_event_create_kernel_counter(attr, cpu, NULL,
-							  NULL, NULL);
 		if (IS_ERR(pevent))
 			goto err_out;
 		cpustats->events[i].pevent = pevent;
 		perf_event_enable(pevent);
-		if (cpumask_equal(&pevent->readable_on_cpus, &CPU_MASK_ALL))
+		if (cpumask_equal(&CPU_MASK_ALL, NULL))
 			cpu_grp->any_cpu_ev_mask |= BIT(i);
 	}
 
