@@ -6779,7 +6779,7 @@ static struct platform_driver msm_pcie_driver = {
 	},
 };
 
-static int __init pcie_init(void)
+static __maybe_unused int __init pcie_init(void)
 {
 	int ret = 0, i;
 	char rc_name[MAX_RC_NAME_LEN];
